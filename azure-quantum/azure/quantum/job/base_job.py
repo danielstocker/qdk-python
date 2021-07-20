@@ -11,7 +11,7 @@ from typing import Any, Dict, TYPE_CHECKING
 from urllib.parse import urlparse
 from azure.storage.blob import BlobClient
 
-from azure.quantum.storage import create_container_using_client, get_container_uri, upload_blob, download_blob, ContainerClient
+from azure.quantum.storage import upload_blob, download_blob, ContainerClient
 from azure.quantum._client.models import JobDetails
 
 
@@ -22,15 +22,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 100
-DEFAULT_CONTAINER_NAME_FORMAT = "job-{job_id}"
 
 
 class BaseJob(abc.ABC):
     # Optionally override these to create a Provider-specific Job subclass
-    input_data_format = None
-    output_data_format = None
-    provider_id = None
-
     """
     Base job class with methods to create a job from raw blob data,
     upload blob data and download results.
@@ -99,8 +94,7 @@ class BaseJob(abc.ABC):
             job_id = cls.create_job_id()
 
         # Create container if it does not yet exist
-        container_uri = cls.create_container(
-            workspace=workspace,
+        container_uri = workspace.get_container_uri(
             job_id=job_id,
             container_name=container_name
         )
@@ -136,11 +130,11 @@ class BaseJob(abc.ABC):
         name: str,
         target: str,
         input_data_uri: str,
+        provider_id: str,
+        input_data_format: str,
+        output_data_format: str,
         container_uri: str = None,
         job_id: str = None,
-        provider_id: str = None,
-        input_data_format: str = None,
-        output_data_format: str = None,
         input_params: Dict[str, Any] = None
     ) -> "BaseJob":
         """Create new Job from URI if input data is already uploaded
@@ -154,16 +148,16 @@ class BaseJob(abc.ABC):
         :type target: str
         :param input_data_uri: Input data URI
         :type input_data_uri: str
+        :param provider_id: Provider ID
+        :type provider_id: str, optional
+        :param input_data_format: Input data format
+        :type input_data_format: str, optional
+        :param output_data_format: Output data format
+        :type output_data_format: str, optional
         :param container_uri: Container URI, defaults to None
         :type container_uri: str
         :param job_id: Pre-generated job ID, defaults to None
         :type job_id: str
-        :param provider_id: Provider ID, defaults to None
-        :type provider_id: str, optional
-        :param input_data_format: Input data format, defaults to None
-        :type input_data_format: str, optional
-        :param output_data_format: Output data format, defaults to None
-        :type output_data_format: str, optional
         :param input_params: Input parameters, defaults to None
         :type input_params: Dict[str, Any], optional
         :return: Job instsance
@@ -174,16 +168,10 @@ class BaseJob(abc.ABC):
             job_id = cls.create_job_id()
         if input_params is None:
             input_params = {}
-        if input_data_format is None:
-            input_data_format = cls.input_data_format
-        if output_data_format is None:
-            output_data_format = cls.output_data_format
-        if provider_id is None:
-            provider_id = cls.provider_id
 
         # Create container for output data if not specified
         if container_uri is None:
-            cls.create_container(workspace=workspace, job_id=job_id)
+            container_uri = workspace.get_container_uri(job_id=job_id)
 
         # Create job details and return Job
         details = JobDetails(
@@ -198,37 +186,6 @@ class BaseJob(abc.ABC):
             input_params=input_params
         )
         return cls(workspace, details)
-
-    @staticmethod
-    def create_container(
-        workspace: "Workspace",
-        job_id: str = None,
-        container_name: str = None,
-        container_name_format: str = DEFAULT_CONTAINER_NAME_FORMAT
-    ):
-        if container_name is None:
-            if job_id is not None:
-                container_name = container_name_format.format(job_id=job_id)
-            elif job_id is None:
-                raise ValueError("Must specify job_id or container_name.")
-        # Create container URI and get container client
-        if workspace.storage is None:
-            # Get linked storage account from the service, create
-            # a new container if it does not yet exist
-            container_uri = workspace._get_linked_storage_sas_uri(
-                container_name
-            )
-            container_client = ContainerClient.from_container_url(
-                container_uri
-            )
-            create_container_using_client(container_client)
-        else:
-            # Use the storage acount specified to generate container URI,
-            # create a new container if it does not yet exist
-            container_uri = get_container_uri(
-                workspace.storage, container_name
-            )
-        return container_uri
 
     @staticmethod
     def upload_input_data(
