@@ -9,18 +9,16 @@
 
 import unittest
 from unittest.mock import Mock
-from typing import TYPE_CHECKING
 from azure.quantum.optimization import Problem, Term
 import azure.quantum.optimization.problem
 from common import expected_terms
-import json
 import numpy
 import os
 
 class TestProblemClass(unittest.TestCase):
     def setUp(self):
         self.mock_ws = Mock()
-        self.mock_ws._get_linked_storage_sas_uri.return_value = Mock()
+        self.mock_ws.get_container_uri = Mock(return_value = "mock_container_uri/foo/bar")
 
         ## QUBO problem
         self.problem = Problem(name="test")
@@ -88,12 +86,14 @@ class TestProblemClass(unittest.TestCase):
         azure.quantum.optimization.problem.BlobClient.from_blob_url.return_value = Mock()
         azure.quantum.optimization.problem.ContainerClient = Mock()
         azure.quantum.optimization.problem.ContainerClient.from_container_url.return_value = Mock()
-        azure.quantum.optimization.problem.upload_blob = Mock()
-        azure.quantum.optimization.problem.upload_blob.get_blob_uri_with_sas_token = Mock()
+        azure.quantum.job.base_job.get_container_uri = Mock()
+        azure.quantum.job.base_job.get_container_uri.return_value = "mock_container/foo/bar"
+        azure.quantum.job.base_job.upload_blob = Mock()
+        azure.quantum.job.base_job.upload_blob.get_blob_uri_with_sas_token = Mock()
 
         assert(self.pubo_problem.uploaded_blob_uri == None)
         actual_result = self.pubo_problem.upload(self.mock_ws)
-        azure.quantum.optimization.problem.upload_blob.assert_called_once() 
+        azure.quantum.job.base_job.upload_blob.assert_called_once() 
 
     def test_download(self):
         azure.quantum.optimization.problem.download_blob = Mock(
